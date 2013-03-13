@@ -19,11 +19,15 @@ type Config struct{
 	Root string
 	Docs map[string]string
 }
+type FileStoreInfo struct{
+	file *zip.File
+	compress uint16
+}
 type VPair struct {
 	dir string
 	zfile string
 	rc *zip.ReadCloser
-	files map[string]*zip.File
+	files map[string]FileStoreInfo
 }
 
 type DocArray struct {
@@ -76,35 +80,42 @@ func (s FastCGIServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 	fileInZip := fpath[len(item.dir):]
 
-	rc, err := s.getFile(item, fileInZip)
+	rc, fsi, err := s.getFile(item, fileInZip)
 	if err != nil {
 		s.E4xx(w, 500)
 		return
 	}
 	defer rc.Close()
+	head := w.Header()
+	if fsi.compress == zip.Deflate{
+		head["Content-Encoding"] = []string{"deflate"}
+	}
 	io.Copy(w, rc)
 	//io.Copy(os.Stdout, rc)
 
 	return
 }
 
-func (s FastCGIServer) getFile(item *VPair, file string)(r io.ReadCloser, err error) {
+func (s FastCGIServer) getFile(item *VPair, file string)(r io.ReadCloser, rf *FileStoreInfo, err error) {
 	if item.rc == nil{
 		item.rc, err = zip.OpenReader(item.zfile)
 		if err == nil{
-			item.files = make(map[string]*zip.File)
+			item.files = make(map[string]FileStoreInfo)
 			for _,f := range item.rc.File {
-				item.files[f.Name] = f
+				fstore := FileStoreInfo{f, f.Method}
+				f.Method = zip.Store
+				item.files[f.Name] = fstore
 			}
 		} else {
-			return nil, err
+			return nil, nil, err
 		}
 	}
 	fh, ok := item.files[file]
 	if !ok {
-		return nil, errors.New("zip: file not found")
+		return nil, nil, errors.New("zip: file not found")
 	}
-	r, err = fh.Open()
+	rf = &fh
+	r, err = rf.file.Open()
 	return
 }
 
