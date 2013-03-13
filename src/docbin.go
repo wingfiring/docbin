@@ -61,16 +61,14 @@ func (s FastCGIServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	fpath := path.Clean(req.URL.Path)		// "Root/virtual_dir/doc_path"
 
 	// equal to C++ upper_bound
-	//fmt.Println("Debug: fpath", fpath)
 	idx := sort.Search(len(s.docs.data), func(i int) bool { return s.docs.data[i].dir >= fpath})
-	//fmt.Println("Debug: idx ", idx)
 	if idx == 0{
 		s.E4xx(w, 404)
 		return;
 	}
 	idx--
 
-	item := s.docs.data[idx]
+	item := &s.docs.data[idx]
 
 	if !strings.HasPrefix(fpath, item.dir) {
 		s.E4xx(w, 404)
@@ -78,13 +76,14 @@ func (s FastCGIServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 	fileInZip := fpath[len(item.dir):]
 
-	rc, err := s.getFile(&item, fileInZip)
+	rc, err := s.getFile(item, fileInZip)
 	if err != nil {
 		s.E4xx(w, 500)
 		return
 	}
 	defer rc.Close()
 	io.Copy(w, rc)
+	//io.Copy(os.Stdout, rc)
 
 	return
 }
@@ -97,6 +96,8 @@ func (s FastCGIServer) getFile(item *VPair, file string)(r io.ReadCloser, err er
 			for _,f := range item.rc.File {
 				item.files[f.Name] = f
 			}
+		} else {
+			return nil, err
 		}
 	}
 	fh, ok := item.files[file]
