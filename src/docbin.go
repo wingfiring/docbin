@@ -16,6 +16,7 @@ import (
 )
 
 type Config struct{
+	Dash string
 	Root string
 	Docs map[string][]string
 }
@@ -41,11 +42,13 @@ func (p *DocArray) Less(i, j int) bool  { return p.data[i].dir < p.data[j].dir }
 func (p *DocArray) Swap(i, j int)       { p.data[i], p.data[j] = p.data[j], p.data[i] }
 
 type FastCGIServer struct{
+	dashboard string
 	docs DocArray
 }
 
 func NewFCGIServer(cfg Config) *FastCGIServer{
 	b := new(FastCGIServer)
+	b.dashboard = cfg.Dash
 	root := path.Clean(cfg.Root) + "/"
 	b.docs.data = make([]VPair, len(cfg.Docs))
 	i := 0
@@ -88,6 +91,18 @@ func (s FastCGIServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 	fileInZip := fpath[len(item.dir):]
 
+	if len(fileInZip) == 0 ||
+		(len(fileInZip) == 1 && fileInZip[0] == '/'){	// root of docs
+		dash, err := os.Open(s.dashboard)
+		if err != nil {
+			s.E4xx(w, 404)
+			return
+		}
+		defer dash.Close()
+		io.Copy(w, dash)
+		return
+	}
+
 	rc, fsi, err := s.getFile(item, fileInZip)
 	if err != nil {
 		s.E4xx(w, 404)
@@ -117,7 +132,7 @@ func (s FastCGIServer) getFile(item *VPair, file string)(r io.ReadCloser, rf *Fi
 			return nil, nil, err
 		}
 	}
-	zipFile = item.prefix + file
+	zipFile := item.prefix + file
 	fh, ok := item.files[zipFile]
 	if !ok {
 		return nil, nil, errors.New("zip: file not found")
