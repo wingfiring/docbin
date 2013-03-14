@@ -17,7 +17,7 @@ import (
 
 type Config struct{
 	Root string
-	Docs map[string]string
+	Docs map[string][]string
 }
 type FileStoreInfo struct{
 	file *zip.File
@@ -26,6 +26,8 @@ type FileStoreInfo struct{
 type VPair struct {
 	dir string
 	zfile string
+	index string
+	prefix string
 	rc *zip.ReadCloser
 	files map[string]FileStoreInfo
 }
@@ -48,7 +50,13 @@ func NewFCGIServer(cfg Config) *FastCGIServer{
 	b.docs.data = make([]VPair, len(cfg.Docs))
 	i := 0
 	for k,v := range cfg.Docs {
-		b.docs.data[i] = VPair{path.Clean(root + k) + "/",v, nil, nil}	// key is "root/virtual_dir/"
+		var fname, index, prefix string
+		if len(v) == 0 {continue;}
+		fname = v[0]
+		if len(v) > 1 { index = v[1]}
+		if len(v) > 2 { prefix = v[2]}
+
+		b.docs.data[i] = VPair{path.Clean(root + k) + "/", fname, index, prefix, nil, nil}	// key is "root/virtual_dir/"
 		i++
 	}
 	sort.Sort(&b.docs)
@@ -62,7 +70,7 @@ func (s FastCGIServer) E4xx(w http.ResponseWriter, code int) {
 }
 
 func (s FastCGIServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	fpath := path.Clean(req.URL.Path)		// "Root/virtual_dir/doc_path"
+	fpath := req.URL.Path		// "Root/virtual_dir/doc_path"
 
 	// equal to C++ upper_bound
 	idx := sort.Search(len(s.docs.data), func(i int) bool { return s.docs.data[i].dir >= fpath})
@@ -82,7 +90,7 @@ func (s FastCGIServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	rc, fsi, err := s.getFile(item, fileInZip)
 	if err != nil {
-		s.E4xx(w, 500)
+		s.E4xx(w, 404)
 		return
 	}
 	defer rc.Close()
@@ -91,7 +99,6 @@ func (s FastCGIServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		head["Content-Encoding"] = []string{"deflate"}
 	}
 	io.Copy(w, rc)
-	//io.Copy(os.Stdout, rc)
 
 	return
 }
@@ -110,7 +117,8 @@ func (s FastCGIServer) getFile(item *VPair, file string)(r io.ReadCloser, rf *Fi
 			return nil, nil, err
 		}
 	}
-	fh, ok := item.files[file]
+	zipFile = item.prefix + file
+	fh, ok := item.files[zipFile]
 	if !ok {
 		return nil, nil, errors.New("zip: file not found")
 	}
