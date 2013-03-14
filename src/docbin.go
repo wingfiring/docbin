@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"sync"
 	"fmt"
 	"os"
 	"io"
@@ -42,6 +43,9 @@ func (p *DocArray) Less(i, j int) bool  { return p.data[i].dir < p.data[j].dir }
 func (p *DocArray) Swap(i, j int)       { p.data[i], p.data[j] = p.data[j], p.data[i] }
 
 type FastCGIServer struct{
+	zipMutex sync.Mutex
+	entryMutex sync.Mutex
+	root string
 	dashboard string
 	docs DocArray
 }
@@ -49,7 +53,7 @@ type FastCGIServer struct{
 func NewFCGIServer(cfg Config) *FastCGIServer{
 	b := new(FastCGIServer)
 	b.dashboard = cfg.Dash
-	root := path.Clean(cfg.Root) + "/"
+	b.root = path.Clean(cfg.Root) + "/"
 	b.docs.data = make([]VPair, len(cfg.Docs))
 	i := 0
 	for k,v := range cfg.Docs {
@@ -59,7 +63,7 @@ func NewFCGIServer(cfg Config) *FastCGIServer{
 		if len(v) > 1 { index = v[1]}
 		if len(v) > 2 { prefix = v[2]}
 
-		b.docs.data[i] = VPair{path.Clean(root + k) + "/", fname, index, prefix, nil, nil}	// key is "root/virtual_dir/"
+		b.docs.data[i] = VPair{path.Clean(b.root + k) + "/", fname, index, prefix, nil, nil}	// key is "root/virtual_dir/"
 		i++
 	}
 	sort.Sort(&b.docs)
@@ -75,11 +79,22 @@ func (s FastCGIServer) E4xx(w http.ResponseWriter, code int) {
 func (s FastCGIServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	fpath := req.URL.Path		// "Root/virtual_dir/doc_path"
 
+	if fpath == s.root{
+		dash, err := os.Open(s.dashboard)
+		if err != nil {
+			s.E4xx(w, 404)
+			return
+		}
+		defer dash.Close()
+		io.Copy(w, dash)
+		return;
+	}
+
 	// equal to C++ upper_bound
-	idx := sort.Search(len(s.docs.data), func(i int) bool { return s.docs.data[i].dir >= fpath})
+	idx := sort.Search(len(s.docs.data), func(i int) bool { return s.docs.data[i].dir > fpath})
 	if idx == 0{
 		s.E4xx(w, 404)
-		return;
+		return
 	}
 	idx--
 
@@ -89,19 +104,11 @@ func (s FastCGIServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		s.E4xx(w, 404)
 		return;
 	}
-	fileInZip := fpath[len(item.dir):]
-
-	if len(fileInZip) == 0 ||
-		(len(fileInZip) == 1 && fileInZip[0] == '/'){	// root of docs
-		dash, err := os.Open(s.dashboard)
-		if err != nil {
-			s.E4xx(w, 404)
-			return
-		}
-		defer dash.Close()
-		io.Copy(w, dash)
-		return
+	head := w.Header()
+	if fpath == item.dir {
+		fpath += item.index
 	}
+	fileInZip := fpath[len(item.dir):]
 
 	rc, fsi, err := s.getFile(item, fileInZip)
 	if err != nil {
@@ -109,7 +116,6 @@ func (s FastCGIServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	defer rc.Close()
-	head := w.Header()
 	if fsi.compress == zip.Deflate{
 		head["Content-Encoding"] = []string{"deflate"}
 	}
@@ -117,28 +123,47 @@ func (s FastCGIServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	return
 }
+func (s FastCGIServer) loadZip(item *VPair)(err error) {
+	s.zipMutex.Lock()
+	defer s.zipMutex.Unlock()
+
+	if item.rc != nil { return nil}
+
+	item.rc, err = zip.OpenReader(item.zfile)
+	if err == nil{
+		item.files = make(map[string]FileStoreInfo)
+		for _,f := range item.rc.File {
+			fstore := FileStoreInfo{f, f.Method}
+			f.Method = zip.Store
+			item.files[f.Name] = fstore
+		}
+		fmt.Println("zip loaded<hr/> ", item.zfile)
+	} else {
+		fmt.Println("open zip faild<hr/> ", item.zfile, err)
+	}
+	return
+}
+func (s FastCGIServer) openEntry(entry *zip.File)(io.ReadCloser, error) {
+	s.entryMutex.Lock()
+	defer s.entryMutex.Unlock()
+	return entry.Open()
+}
 
 func (s FastCGIServer) getFile(item *VPair, file string)(r io.ReadCloser, rf *FileStoreInfo, err error) {
 	if item.rc == nil{
-		item.rc, err = zip.OpenReader(item.zfile)
-		if err == nil{
-			item.files = make(map[string]FileStoreInfo)
-			for _,f := range item.rc.File {
-				fstore := FileStoreInfo{f, f.Method}
-				f.Method = zip.Store
-				item.files[f.Name] = fstore
-			}
-		} else {
-			return nil, nil, err
-		}
+		err = s.loadZip(item)
+		if err != nil {return}
 	}
+
 	zipFile := item.prefix + file
 	fh, ok := item.files[zipFile]
 	if !ok {
+		fmt.Println("file not found<hr/> ", zipFile)
 		return nil, nil, errors.New("zip: file not found")
 	}
+
 	rf = &fh
-	r, err = rf.file.Open()
+	r, err = s.openEntry(fh.file)
 	return
 }
 
