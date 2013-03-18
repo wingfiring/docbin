@@ -11,7 +11,7 @@ Zip format contains multiple files, and each of them is compressed with defalte 
 
 Since the Pi has limited CPU resource and all popular web browsers are supput deflate encoding,so Docbin doesn't respect Accept-Encoding request header. It'll reponse "deflate" for always if the reqested file is deflated ( if the file is just "store", the response does not set the Content-Encoding header)
 
-Known Issue
+Known Issues
 ==========================
 * Wget doesn't deflate the received html content, and I don't know any tool at hand to deflate the received file.
 * I'm not familiar with Golang, Docbin seems use too many memory.
