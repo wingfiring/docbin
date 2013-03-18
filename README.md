@@ -20,9 +20,9 @@ Config
 ==========================
 The config of Docbin is a json file, and specified with "-config" flag. 
 in the top level of config:
-- ` dash		path to a dashboard static html file. It'll be used when access http://site/$root/
-- ` root		root path of documents in some site. if root is "/doc", it means all documents are under http://site/doc/
-- ` docs		an object, contains virtual directory to zip package map. Property name is virtual dir name. Property value is an array, it contains at most 3 elements. The first elements is the path to zip file. Second is the path of index page in the zip. the last is the prefix of zipped document. For example
+- `dash`		path to a dashboard static html file. It'll be used when access http://site/$root/
+- `root`		root path of documents in some site. if root is "/doc", it means all documents are under http://site/doc/
+- `docs`		an object, contains virtual directory to zip package map. Property name is virtual dir name. Property value is an array, it contains at most 3 elements. The first elements is the path to zip file. Second is the path of index page in the zip. the last is the prefix of zipped document. For example
 
 	"boost1.40_cn":["/mnt/d160/scy/www/docs/boost_1_40_cn.zip", "index.html", "boost1.40/"]
 
