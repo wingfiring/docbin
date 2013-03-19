@@ -118,6 +118,7 @@ func (s FastCGIServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	defer rc.Close()
 	if fsi.compress == zip.Deflate{
 		head["Content-Encoding"] = []string{"deflate"}
+		head["Transfer-Encoding"] = []string{"deflate"}
 	}
 	io.Copy(w, rc)
 
