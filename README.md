@@ -29,3 +29,11 @@ in the top level of config:
 for the request url http://scy.icerote.net/doc/boost1.40_cn/index.html, Docbin will open zip file, and get file "boost1.40/boost1.40_cn/index.html" from it.
 
 
+Build
+============================
+It contains hacked zip package name zip2 for supporting large number of files in zip files (more than 0xFFFF), so the build step is:
+
+1. cd src
+2. gccgo -c -o ../bin/zip2.o reader.go  struct.go  writer.go
+3. cd ../bin	
+4. gccgo -o docbin ../src/docbin.go zip2.o    #must cd into bin, ../bin/zip2.o doesn't work. I don't know why.

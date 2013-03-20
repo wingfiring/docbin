@@ -12,7 +12,8 @@ import (
 	"path"
 	"strings"
 	"sort"
-	"archive/zip"
+	//"archive/zip2"
+	"zip2"
 	"errors"
 )
 
@@ -22,7 +23,7 @@ type Config struct{
 	Docs map[string][]string
 }
 type FileStoreInfo struct{
-	file *zip.File
+	file *zip2.File
 	compress uint16
 }
 type VPair struct {
@@ -30,7 +31,7 @@ type VPair struct {
 	zfile string
 	index string
 	prefix string
-	rc *zip.ReadCloser
+	rc *zip2.ReadCloser
 	files map[string]FileStoreInfo
 }
 
@@ -116,7 +117,7 @@ func (s FastCGIServer) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	defer rc.Close()
-	if fsi.compress == zip.Deflate{
+	if fsi.compress == zip2.Deflate{
 		head["Content-Encoding"] = []string{"deflate"}
 	}
 	io.Copy(w, rc)
@@ -129,12 +130,12 @@ func (s FastCGIServer) loadZip(item *VPair)(err error) {
 
 	if item.rc != nil { return nil}
 
-	item.rc, err = zip.OpenReader(item.zfile)
+	item.rc, err = zip2.OpenReader(item.zfile)
 	if err == nil{
 		item.files = make(map[string]FileStoreInfo)
 		for _,f := range item.rc.File {
 			fstore := FileStoreInfo{f, f.Method}
-			f.Method = zip.Store
+			f.Method = zip2.Store
 			item.files[f.Name] = fstore
 		}
 		fmt.Println("zip loaded<hr/> ", item.zfile)
@@ -143,7 +144,7 @@ func (s FastCGIServer) loadZip(item *VPair)(err error) {
 	}
 	return
 }
-func (s FastCGIServer) openEntry(entry *zip.File)(io.ReadCloser, error) {
+func (s FastCGIServer) openEntry(entry *zip2.File)(io.ReadCloser, error) {
 	s.entryMutex.Lock()
 	defer s.entryMutex.Unlock()
 	return entry.Open()
